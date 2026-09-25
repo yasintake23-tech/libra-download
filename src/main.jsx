@@ -1,6 +1,9 @@
 import React,{useState}from"react";
 import{createRoot}from"react-dom/client";
 import"./style.css";
+import{auth,db}from"./firebase";
+import{signInWithEmailAndPassword,signOut}from"firebase/auth";
+import{doc,getDoc,setDoc,serverTimestamp}from"firebase/firestore";
 
 const initial={
  version:"1.0.6",
@@ -15,14 +18,23 @@ const initial={
 const Icon=({children})=><span className="icon">{children}</span>;
 
 function App(){
- const[cfg,setCfg]=useState(()=>JSON.parse(localStorage.getItem("libra-config")||"null")||initial);
- const[open,setOpen]=useState(false),[admin,setAdmin]=useState(false),[pw,setPw]=useState(""),[err,setErr]=useState("");
- const[form,setForm]=useState(cfg);
+ const[cfg,setCfg]=useState(initial);
+ const[open,setOpen]=useState(false),[admin,setAdmin]=useState(false),[email,setEmail]=useState(""),[pw,setPw]=useState(""),[err,setErr]=useState(""),[saving,setSaving]=useState(false);
+ const[form,setForm]=useState(initial);
 
- const save=()=>{
-  localStorage.setItem("libra-config",JSON.stringify(form));
-  setCfg(form);setAdmin(false);setOpen(false);setPw("");
- };
+ const login=async()=>{
+  setErr("");
+  try{await signInWithEmailAndPassword(auth,email.trim(),pw);setAdmin(true);setForm(cfg)}
+  catch(e){setErr("E-posta veya şifre hatalı.")}
+};
+const save=async()=>{
+  setSaving(true);setErr("");
+  try{
+   await setDoc(doc(db,"website","config"),{version:form.version.trim(),downloadUrl:form.downloadUrl.trim(),notes:form.notes.filter(Boolean),updatedAt:serverTimestamp()});
+   setCfg(form);await signOut(auth);setAdmin(false);setOpen(false);setPw("");setEmail("");
+  }catch(e){setErr("Kaydedilemedi. Firebase yetkilerini kontrol et.")}finally{setSaving(false)}
+};
+React.useEffect(()=>{(async()=>{try{const s=await getDoc(doc(db,"website","config"));if(s.exists()){const d=s.data();const n={version:d.version||initial.version,downloadUrl:d.downloadUrl||"",notes:Array.isArray(d.notes)?d.notes:initial.notes};setCfg(n);setForm(n)}}catch(e){console.error(e)}})()},[]);
 
  const download=()=>{
   if(cfg.downloadUrl)window.location.href=cfg.downloadUrl;
@@ -138,7 +150,7 @@ function App(){
   {open&&<div className="overlay" onMouseDown={e=>e.target===e.currentTarget&&setOpen(false)}>
    <div className="modal">
     <button className="modal-close" onClick={()=>setOpen(false)}>×</button>
-    {!admin?<><div className="modal-icon">⌁</div><div className="section-kicker">YÖNETİCİ</div><h3>Libra ayarları</h3><p>Yayın bilgilerini buradan güncelleyebilirsin.</p><input autoFocus type="password" placeholder="Yönetici şifresi" value={pw} onChange={e=>setPw(e.target.value)} onKeyDown={e=>e.key==="Enter"&&setAdmin(pw==="Libra+8369#")}/>{err&&<div className="err">Şifre yanlış.</div>}<button className="modal-primary" onClick={()=>{if(pw==="Libra+8369#"){setForm(cfg);setAdmin(true);setErr("")}else setErr("wrong")}}>Devam et</button></>:<><div className="section-kicker">YAYIN YÖNETİMİ</div><h3>Sürümü güncelle</h3><label>İndirme bağlantısı</label><input value={form.downloadUrl} onChange={e=>setForm({...form,downloadUrl:e.target.value})} placeholder="APK / Google Drive bağlantısı"/><label>Sürüm</label><input value={form.version} onChange={e=>setForm({...form,version:e.target.value})} placeholder="1.0.7"/><label>Sürüm notları</label><textarea rows="7" value={form.notes.join("\n")} onChange={e=>setForm({...form,notes:e.target.value.split("\n")})} placeholder="Her satıra bir yenilik"/><button className="modal-primary" onClick={save}>Değişiklikleri kaydet</button></>}<button className="modal-secondary" onClick={()=>setOpen(false)}>Kapat</button>
+    {!admin?<><div className="modal-icon">⌁</div><div className="section-kicker">YÖNETİCİ</div><h3>Libra ayarları</h3><p>Yayın bilgilerini değiştirmek için Firebase yönetici hesabınla giriş yap.</p><label>E-posta</label><input autoFocus type="email" placeholder="admin@libra.app" value={email} onChange={e=>setEmail(e.target.value)}/><label>Şifre</label><input type="password" placeholder="••••••••" value={pw} onChange={e=>setPw(e.target.value)} onKeyDown={e=>e.key==="Enter"&&login()}/>{err&&<div className="err">{err}</div>}<button className="modal-primary" onClick={login}>Giriş yap</button></>:<><div className="section-kicker">YAYIN YÖNETİMİ</div><h3>Sürümü güncelle</h3><label>İndirme bağlantısı</label><input value={form.downloadUrl} onChange={e=>setForm({...form,downloadUrl:e.target.value})} placeholder="APK / Google Drive bağlantısı"/><label>Sürüm</label><input value={form.version} onChange={e=>setForm({...form,version:e.target.value})} placeholder="1.0.7"/><label>Sürüm notları</label><textarea rows="7" value={form.notes.join("\n")} onChange={e=>setForm({...form,notes:e.target.value.split("\n")})} placeholder="Her satıra bir yenilik"/><button className="modal-primary" onClick={save} disabled={saving}>{saving?"Kaydediliyor…":"Değişiklikleri kaydet"}</button></>}<button className="modal-secondary" onClick={()=>setOpen(false)}>Kapat</button>
    </div>
   </div>}
  </div>
